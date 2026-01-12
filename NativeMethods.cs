@@ -66,6 +66,13 @@ namespace DesktopAnnouncement
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
+        /// <summary>
+        /// 檢查視窗 Handle 是否有效
+        /// </summary>
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool IsWindow(IntPtr hWnd);
+
         #endregion
 
         #region 常數定義
@@ -116,6 +123,13 @@ namespace DesktopAnnouncement
                 if (hWnd == IntPtr.Zero)
                     return string.Empty;
 
+                // 檢查 Handle 是否有效（防止競態條件：視窗可能在取得 Handle 後被銷毀）
+                if (!IsWindow(hWnd))
+                {
+                    System.Diagnostics.Debug.WriteLine("[WARN] 前景視窗 Handle 無效（視窗可能已被銷毀）");
+                    return string.Empty;
+                }
+
                 // 使用足夠大的緩衝區（Win32 API 類別名稱通常不超過 256 字元，但使用 1024 以防不測）
                 const int initialSize = 256;
                 StringBuilder className = new StringBuilder(initialSize);
@@ -160,6 +174,13 @@ namespace DesktopAnnouncement
                 IntPtr hWnd = GetForegroundWindow();
                 if (hWnd == IntPtr.Zero)
                     return string.Empty;
+
+                // 檢查 Handle 是否有效（防止競態條件：視窗可能在取得 Handle 後被銷毀）
+                if (!IsWindow(hWnd))
+                {
+                    System.Diagnostics.Debug.WriteLine("[WARN] 前景視窗 Handle 無效（視窗可能已被銷毀）");
+                    return string.Empty;
+                }
 
                 // 取得處理程序 ID
                 GetWindowThreadProcessId(hWnd, out uint processId);

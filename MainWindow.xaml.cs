@@ -42,6 +42,7 @@ namespace DesktopAnnouncement
 
         /// <summary>
         /// 定時器，用於持續監控視窗層級（確保視窗保持在最底層）
+        /// 注意：主要依賴 Activated 事件，此定時器僅作為備援機制
         /// </summary>
         private readonly DispatcherTimer _windowLevelCheckTimer;
 
@@ -67,9 +68,10 @@ namespace DesktopAnnouncement
             this.Opacity = 1.0; // 總是顯示
             this.Loaded += MainWindow_Loaded;
 
-            // 在建構函式中訂閱 LocationChanged，確保與 OnClosed 中的取消訂閱生命週期一致
+            // 在建構函式中訂閱事件，確保與 OnClosed 中的取消訂閱生命週期一致
             // 防止記憶體洩漏（避免在視窗加載前關閉時遺漏的事件訂閱）
             this.LocationChanged += MainWindow_LocationChanged;
+            this.Activated += MainWindow_Activated;
 
             // 設定設定檔路徑（與執行檔同目錄）
             _configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt");
@@ -79,9 +81,9 @@ namespace DesktopAnnouncement
             _dateCheckTimer = new DispatcherTimer();
             _dateCheckTimer.Tick += DateCheckTimer_Tick;
 
-            // 初始化視窗層級監控定時器（每 2000ms 檢查一次，降低系統開銷）
+            // 初始化視窗層級監控定時器（每 10 秒檢查一次作為備援，主要依賴 Activated 事件）
             _windowLevelCheckTimer = new DispatcherTimer();
-            _windowLevelCheckTimer.Interval = TimeSpan.FromMilliseconds(2000);
+            _windowLevelCheckTimer.Interval = TimeSpan.FromSeconds(10);
             _windowLevelCheckTimer.Tick += WindowLevelCheckTimer_Tick;
 
             // 初始化視窗位置保存防抖定時器（避免頻繁I/O）
@@ -133,11 +135,20 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
-        /// 視窗層級監控定時器觸發事件（每 500ms 檢查一次，確保視窗保持在最底層）
+        /// 視窗激活事件（當視窗被激活時立即將其設置回底層）
+        /// </summary>
+        private void MainWindow_Activated(object? sender, EventArgs e)
+        {
+            // 視窗被激活時，立即將其設置回底層
+            SetWindowToBottom();
+        }
+
+        /// <summary>
+        /// 視窗層級監控定時器觸發事件（每 10 秒檢查一次作為備援，確保視窗保持在最底層）
         /// </summary>
         private void WindowLevelCheckTimer_Tick(object? sender, EventArgs e)
         {
-            // 確保視窗保持在最底層
+            // 確保視窗保持在最底層（作為備援機制）
             SetWindowToBottom();
         }
 
@@ -380,7 +391,7 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
-        /// 檢查位置是否在螢幕範圍內
+        /// 檢查位置是否在螢幕範圍內（要求至少 50% 的視窗區域可見）
         /// </summary>
         private bool IsPositionValid(double left, double top)
         {
@@ -389,16 +400,29 @@ namespace DesktopAnnouncement
                 // 取得主螢幕工作區域
                 var workArea = SystemParameters.WorkArea;
 
-                // 確保視窗至少有一部分在螢幕內（考慮視窗大小）
-                bool horizontalValid = left + this.Width > workArea.Left &&
-                                      left < workArea.Right;
-                bool verticalValid = top + this.Height > workArea.Top &&
-                                    top < workArea.Bottom;
+                // 計算視窗在螢幕內的可見區域
+                double visibleLeft = Math.Max(left, workArea.Left);
+                double visibleTop = Math.Max(top, workArea.Top);
+                double visibleRight = Math.Min(left + this.Width, workArea.Right);
+                double visibleBottom = Math.Min(top + this.Height, workArea.Bottom);
 
-                return horizontalValid && verticalValid;
+                // 計算可見寬度和高度
+                double visibleWidth = Math.Max(0, visibleRight - visibleLeft);
+                double visibleHeight = Math.Max(0, visibleBottom - visibleTop);
+
+                // 計算可見面積
+                double visibleArea = visibleWidth * visibleHeight;
+                double totalArea = this.Width * this.Height;
+
+                // 確保至少 50% 的視窗面積在螢幕內
+                const double MIN_VISIBLE_RATIO = 0.5;
+                bool isVisibleEnough = (totalArea > 0) && (visibleArea / totalArea >= MIN_VISIBLE_RATIO);
+
+                return isVisibleEnough;
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 檢查位置有效性時發生異常：{ex.Message}");
                 return false;
             }
         }
@@ -491,12 +515,14 @@ namespace DesktopAnnouncement
 
         /// <summary>
         /// 更新公告顯示內容（計算日期差）
+        /// 注意：使用本地日期（DateTime.Today）以正確反映用戶所在時區的日期
         /// </summary>
         private void UpdateAnnouncementDisplay()
         {
             try
             {
                 // 計算日期差（今日日期 - 目標日期）
+                // 使用本地時間是正確的，因為用戶想看到本地日期的倒計時
                 DateTime today = DateTime.Today;
                 TimeSpan difference = today - _targetDate;
                 int daysPassed = (int)difference.TotalDays;
@@ -604,6 +630,7 @@ namespace DesktopAnnouncement
 
         /// <summary>
         /// 計算並設定下一次凌晨 00:00 的更新時間
+        /// 注意：考慮時區變更（如夏令時）的影響，使用防禦性檢查確保穩定性
         /// </summary>
         private void ScheduleNextMidnightUpdate()
         {
@@ -612,7 +639,7 @@ namespace DesktopAnnouncement
                 // 停止現有定時器
                 _dateCheckTimer.Stop();
 
-                // 取得當前時間
+                // 取得當前時間（本地時間，會受時區影響）
                 DateTime now = DateTime.Now;
 
                 // 計算下一個凌晨 00:00
@@ -621,36 +648,60 @@ namespace DesktopAnnouncement
                 // 計算時間差
                 TimeSpan timeUntilMidnight = nextMidnight - now;
 
-                // 檢查時間間隔是否有效（應大於 0，小於 25 小時）
-                if (timeUntilMidnight.TotalMilliseconds <= 0 || timeUntilMidnight.TotalHours > 25)
+                // 防禦性檢查：時間間隔應該在合理範圍內
+                // - 最小值：避免負數或零（可能因時區變更導致）
+                // - 最大值：不應超過 25 小時（考慮夏令時可能產生的 1 小時偏移）
+                if (timeUntilMidnight.TotalMilliseconds <= 0)
                 {
-                    System.Diagnostics.Debug.WriteLine("[WARN] 計算的下一次更新時間無效，使用 1 小時作為檢查間隔");
+                    System.Diagnostics.Debug.WriteLine("[WARN] 計算的時間間隔為負數或零（可能時區變更），使用 1 小時作為檢查間隔");
+                    _dateCheckTimer.Interval = TimeSpan.FromHours(1);
+                }
+                else if (timeUntilMidnight.TotalHours > 25)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[WARN] 計算的時間間隔過大（{timeUntilMidnight.TotalHours:F2} 小時），使用 1 小時作為檢查間隔");
                     _dateCheckTimer.Interval = TimeSpan.FromHours(1);
                 }
                 else
                 {
-                    // 設定定時器間隔
+                    // 設定定時器間隔（正常情況）
                     _dateCheckTimer.Interval = timeUntilMidnight;
+
+                    // 記錄日誌（方便除錯）
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[INFO] 已排程下一次更新時間：{nextMidnight:yyyy-MM-dd HH:mm:ss}（{timeUntilMidnight.TotalHours:F2} 小時後）"
+                    );
                 }
 
                 // 啟動定時器
                 _dateCheckTimer.Start();
-
-                // 記錄日誌（方便除錯）
-                System.Diagnostics.Debug.WriteLine(
-                    $"[INFO] 已排程下一次更新時間：{nextMidnight:yyyy-MM-dd HH:mm:ss}（{timeUntilMidnight.TotalHours:F2} 小時後）"
-                );
             }
             catch (OverflowException ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ERROR] 時間計算溢位：{ex.Message}");
-                // 使用預設的 1 小時檢查間隔
+                // 使用預設的 1 小時檢查間隔作為後備方案
+                _dateCheckTimer.Interval = TimeSpan.FromHours(1);
+                _dateCheckTimer.Start();
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 時間範圍超出有效範圍：{ex.Message}");
+                // 使用預設的 1 小時檢查間隔作為後備方案
                 _dateCheckTimer.Interval = TimeSpan.FromHours(1);
                 _dateCheckTimer.Start();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ERROR] 排程更新時間時發生錯誤：{ex.GetType().Name} - {ex.Message}");
+                // 最後的後備方案
+                try
+                {
+                    _dateCheckTimer.Interval = TimeSpan.FromHours(1);
+                    _dateCheckTimer.Start();
+                }
+                catch
+                {
+                    System.Diagnostics.Debug.WriteLine("[CRITICAL] 無法啟動日期檢查定時器");
+                }
             }
         }
 
@@ -696,6 +747,7 @@ namespace DesktopAnnouncement
                 // 取消事件訂閱
                 this.Loaded -= MainWindow_Loaded;
                 this.LocationChanged -= MainWindow_LocationChanged;
+                this.Activated -= MainWindow_Activated;
             }
             catch (Exception ex)
             {
