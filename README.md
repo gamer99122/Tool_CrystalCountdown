@@ -15,15 +15,30 @@ DesktopAnnouncement 是一個使用 C# / WPF (.NET 8) 開發的桌面公告小�
 
 ```
 DesktopAnnouncement/
-├── NativeMethods.cs          # Win32 API 封裝（GetForegroundWindow, GetClassName 等）
-├── MainWindow.xaml           # 主視窗 UI 設計（水晶玻璃風格）
-├── MainWindow.xaml.cs        # 主視窗邏輯（監控、日期計算、位置管理）
-├── App.xaml                  # 應用程式入口點
-├── App.xaml.cs               # 應用程式生命週期管理
-├── DesktopAnnouncement.csproj # 專案檔（.NET 8）
-├── config.txt                # 設定檔（日期與標題）
-├── position.txt              # 視窗位置儲存檔（自動生成）
-└── README.md                 # 本說明文件
+├── 核心程式碼
+│   ├── NativeMethods.cs          # Win32 API 封裝（GetForegroundWindow, GetClassName 等）
+│   ├── MainWindow.xaml           # 主視窗 UI 設計（水晶玻璃風格）
+│   ├── MainWindow.xaml.cs        # 主視窗邏輯（監控、日期計算、位置管理）
+│   ├── App.xaml                  # 應用程式入口點
+│   ├── App.xaml.cs               # 應用程式生命週期管理
+│   └── DesktopAnnouncement.csproj # 專案檔（.NET 8）
+├── 設定檔
+│   ├── config.txt                # 設定檔（日期與標題）
+│   └── position.txt              # 視窗位置儲存檔（自動生成）
+├── 編譯與發佈腳本
+│   ├── build.bat                 # 編譯腳本
+│   ├── publish.bat               # 發佈腳本（標準版）
+│   ├── publish_en.bat            # 發佈腳本（英文版本）
+│   ├── publish_simple.bat        # 簡單發佈腳本
+│   └── publish.ps1               # PowerShell 發佈腳本
+├── 文件與說明
+│   ├── README.md                 # 本說明文件
+│   ├── 單一實例說明.md            # 單一實例機制說明
+│   ├── 更新說明_v1.1.md          # 版本更新日誌
+│   ├── 打包說明.md               # 打包編譯說明
+│   ├── 打包說明_最新.txt         # 最新打包說明
+│   └── 打包問題排除.md           # 常見打包問題解決方案
+└── bin/, obj/                    # 編譯生成的檔案（未版控）
 ```
 
 ## 技術架構
@@ -60,6 +75,15 @@ DesktopAnnouncement/
   - 檔案不存在檢查
   - 日期格式驗證
   - 空白內容處理
+
+## 文件說明
+
+### 快速參考
+- **單一實例說明.md** - 了解如何實現單一實例保護機制
+- **更新說明_v1.1.md** - 查看版本更新內容與改進事項
+- **打包說明.md** - 學習如何打包成可執行檔案
+- **打包說明_最新.txt** - 最新的打包與編譯相關建議
+- **打包問題排除.md** - 排查常見的打包與發佈問題
 
 ## 編譯與執行
 
