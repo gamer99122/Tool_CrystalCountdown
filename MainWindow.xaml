@@ -26,13 +26,6 @@
                           BlurRadius="25"
                           ShadowDepth="0"
                           Opacity="0.8"/>
-
-        <!-- 文字陰影效果 -->
-        <DropShadowEffect x:Key="TextShadow"
-                          Color="#80000000"
-                          BlurRadius="8"
-                          ShadowDepth="2"
-                          Opacity="0.6"/>
     </Window.Resources>
 
     <!-- 主容器：使用 Grid 布局 -->
@@ -71,9 +64,15 @@
                            FontWeight="Medium"
                            Foreground="#FFFFFF"
                            HorizontalAlignment="Center"
-                           Effect="{StaticResource TextShadow}"
                            TextWrapping="Wrap"
-                           Margin="0,0,0,10"/>
+                           Margin="0,0,0,10">
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="#80000000"
+                                          BlurRadius="8"
+                                          ShadowDepth="2"
+                                          Opacity="0.6"/>
+                    </TextBlock.Effect>
+                </TextBlock>
 
                 <!-- 中央數字區域 -->
                 <StackPanel Grid.Row="1"
@@ -86,7 +85,6 @@
                                Text="0"
                                FontSize="72"
                                FontWeight="Bold"
-                               Effect="{StaticResource TextShadow}"
                                Margin="0,0,10,0">
                         <!-- 漸層文字效果 -->
                         <TextBlock.Foreground>
@@ -95,6 +93,12 @@
                                 <GradientStop Color="#D0E8FF" Offset="1.0"/>
                             </LinearGradientBrush>
                         </TextBlock.Foreground>
+                        <TextBlock.Effect>
+                            <DropShadowEffect Color="#80000000"
+                                              BlurRadius="8"
+                                              ShadowDepth="2"
+                                              Opacity="0.6"/>
+                        </TextBlock.Effect>
                     </TextBlock>
 
                     <!-- 後綴文字 -->
@@ -104,8 +108,14 @@
                                FontWeight="Light"
                                Foreground="#F0FFFFFF"
                                VerticalAlignment="Bottom"
-                               Effect="{StaticResource TextShadow}"
-                               Margin="0,0,0,12"/>
+                               Margin="0,0,0,12">
+                        <TextBlock.Effect>
+                            <DropShadowEffect Color="#80000000"
+                                              BlurRadius="8"
+                                              ShadowDepth="2"
+                                              Opacity="0.6"/>
+                        </TextBlock.Effect>
+                    </TextBlock>
                 </StackPanel>
 
                 <!-- 底部裝飾線 -->
