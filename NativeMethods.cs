@@ -116,8 +116,18 @@ namespace DesktopAnnouncement
                 if (hWnd == IntPtr.Zero)
                     return string.Empty;
 
-                StringBuilder className = new StringBuilder(256);
+                // 使用足夠大的緩衝區（Win32 API 類別名稱通常不超過 256 字元，但使用 1024 以防不測）
+                const int initialSize = 256;
+                StringBuilder className = new StringBuilder(initialSize);
                 int result = GetClassName(hWnd, className, className.Capacity);
+
+                // 檢查是否被截斷（回傳值 = 緩衝區容量 - 1 表示可能被截斷）
+                if (result > 0 && result == className.Capacity - 1)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[WARN] 類別名稱可能被截斷，重試使用更大的緩衝區");
+                    className = new StringBuilder(1024);
+                    result = GetClassName(hWnd, className, className.Capacity);
+                }
 
                 return result > 0 ? className.ToString() : string.Empty;
             }
@@ -164,9 +174,17 @@ namespace DesktopAnnouncement
                     return string.Empty;
                 }
 
-                // 取得執行檔路徑
+                // 取得執行檔路徑（使用足夠的緩衝區並檢查截斷）
                 StringBuilder processPath = new StringBuilder(1024);
                 uint pathLength = GetModuleFileNameEx(processHandle, IntPtr.Zero, processPath, (uint)processPath.Capacity);
+
+                // 檢查是否被截斷（回傳值 >= 緩衝區容量表示可能被截斷）
+                if (pathLength > 0 && pathLength >= processPath.Capacity)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[WARN] 執行檔路徑可能被截斷，重試使用更大的緩衝區");
+                    processPath = new StringBuilder(4096);
+                    pathLength = GetModuleFileNameEx(processHandle, IntPtr.Zero, processPath, (uint)processPath.Capacity);
+                }
 
                 return pathLength > 0 ? processPath.ToString() : string.Empty;
             }

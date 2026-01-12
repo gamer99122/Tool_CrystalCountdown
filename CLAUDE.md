@@ -111,6 +111,25 @@ Edit `LoadConfiguration()` (line ~379):
 - Date validation uses `DateTime.TryParseExact()` with format "yyyy/MM/dd"
 - Add additional validation rules in this method
 
+1. Win32 與 P/Invoke 安全
+Handle 管理：所有回傳 IntPtr (Handle) 的 P/Invoke 呼叫，必須使用 try-finally 確保呼叫 CloseHandle()，或考慮重構成 SafeHandle 以防止資源洩漏。
+
+字串編碼：Win32 API 必須統一標註 CharSet = CharSet.Unicode。
+
+緩衝區防禦：使用 StringBuilder 接收 Win32 字串時（如 GetClassName），應先檢查回傳長度，避免固定長度（256 字符）造成的截斷或緩衝區溢位。
+
+2. WPF 執行緒與記憶體安全
+UI 執行緒隔離：雖然 DispatcherTimer 在 UI 執行緒執行，但任何涉及外部行程掃描（QueryProcesses）的邏輯若可能導致 UI 凍結，應改用 Task.Run 並透過 Dispatcher.InvokeAsync 回傳結果。
+
+事件退訂：修復任何 UI 邏輯時，必須檢查 OnClosed 或 OnExit 是否已正確針對該物件進行 -= 事件退訂。
+
+異步規範：所有的異步方法必須明確處理 Task（不可使用 async void，除非是事件處理常式），並考慮傳入 CancellationToken。
+
+3. 檔案 I/O 強化
+明確編碼：所有檔案讀寫（config.txt, position.txt）禁止使用預設編碼，必須明確傳入 System.Text.Encoding.UTF8。
+
+併發控制：考慮到 TerminateExistingInstance 可能與新實體產生衝突，檔案寫入應加入簡單的 try-catch 或 FileShare 鎖定處理。
+
 ## Known Issues & High-Risk Areas (Prioritized)
 
 ### CRITICAL (Already Fixed)

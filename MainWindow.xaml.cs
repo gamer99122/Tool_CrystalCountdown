@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -268,8 +269,8 @@ namespace DesktopAnnouncement
                     return false;
                 }
 
-                // 讀取位置資料
-                string[] lines = File.ReadAllLines(_positionFilePath);
+                // 讀取位置資料（明確指定 UTF8 編碼）
+                string[] lines = File.ReadAllLines(_positionFilePath, Encoding.UTF8);
                 if (lines.Length < 2)
                 {
                     System.Diagnostics.Debug.WriteLine("[WARN] 位置檔案格式不正確");
@@ -322,7 +323,7 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
-        /// 儲存當前視窗位置
+        /// 儲存當前視窗位置（含重試邏輯以處理併發寫入）
         /// </summary>
         private void SaveWindowPosition()
         {
@@ -331,13 +332,33 @@ namespace DesktopAnnouncement
                 // 只在視窗位置有效時儲存
                 if (!double.IsNaN(this.Left) && !double.IsNaN(this.Top))
                 {
-                    // 寫入位置資料
+                    // 寫入位置資料（明確指定 UTF8 編碼）
                     string[] lines = new string[]
                     {
                         this.Left.ToString("F0"),
                         this.Top.ToString("F0")
                     };
-                    File.WriteAllLines(_positionFilePath, lines);
+
+                    // 重試邏輯：防止併發寫入導致的檔案鎖定
+                    const int maxRetries = 3;
+                    const int retryDelayMs = 50;
+                    int retryCount = 0;
+
+                    while (retryCount < maxRetries)
+                    {
+                        try
+                        {
+                            File.WriteAllLines(_positionFilePath, lines, Encoding.UTF8);
+                            return; // 成功，直接返回
+                        }
+                        catch (IOException) when (retryCount < maxRetries - 1)
+                        {
+                            // 檔案被鎖定，重試
+                            retryCount++;
+                            System.Diagnostics.Debug.WriteLine($"[WARN] 位置檔案被鎖定，重試 ({retryCount}/{maxRetries})");
+                            System.Threading.Thread.Sleep(retryDelayMs);
+                        }
+                    }
                 }
             }
             catch (UnauthorizedAccessException ex)
@@ -350,7 +371,7 @@ namespace DesktopAnnouncement
             }
             catch (IOException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 儲存位置檔案時發生 I/O 錯誤：{ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 儲存位置檔案時發生 I/O 錯誤（在重試後仍失敗）：{ex.Message}");
             }
             catch (Exception ex)
             {
@@ -405,8 +426,8 @@ namespace DesktopAnnouncement
                     return;
                 }
 
-                // 讀取檔案內容
-                string content = File.ReadAllText(_configFilePath).Trim();
+                // 讀取檔案內容（明確指定 UTF8 編碼）
+                string content = File.ReadAllText(_configFilePath, Encoding.UTF8).Trim();
                 if (string.IsNullOrWhiteSpace(content))
                 {
                     SetErrorState("config.txt 檔案為空");
