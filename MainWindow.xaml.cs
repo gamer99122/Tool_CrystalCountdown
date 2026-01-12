@@ -47,7 +47,7 @@ namespace DesktopAnnouncement
         /// <summary>
         /// 視窗位置變化防抖定時器（避免頻繁寫入磁盤）
         /// </summary>
-        private DispatcherTimer _savePositionDebounceTimer;
+        private DispatcherTimer? _savePositionDebounceTimer;
 
         /// <summary>
         /// 標記視窗位置是否已改變
@@ -65,6 +65,10 @@ namespace DesktopAnnouncement
             // 設定視窗初始狀態
             this.Opacity = 1.0; // 總是顯示
             this.Loaded += MainWindow_Loaded;
+
+            // 在建構函式中訂閱 LocationChanged，確保與 OnClosed 中的取消訂閱生命週期一致
+            // 防止記憶體洩漏（避免在視窗加載前關閉時遺漏的事件訂閱）
+            this.LocationChanged += MainWindow_LocationChanged;
 
             // 設定設定檔路徑（與執行檔同目錄）
             _configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt");
@@ -103,8 +107,7 @@ namespace DesktopAnnouncement
                 SetWindowPositionToBottomRight();
             }
 
-            // 監聽位置變化事件（用於儲存位置）
-            this.LocationChanged += MainWindow_LocationChanged;
+            // 注意：LocationChanged 已在建構函式中訂閱，無需重複訂閱
 
             // 設定視窗層級為底層（在所有應用程式視窗下方）
             SetWindowToBottom();
@@ -180,8 +183,11 @@ namespace DesktopAnnouncement
             _hasPositionChanged = true;
 
             // 重新啟動防抖定時器（每次位置改變都重新計時）
-            _savePositionDebounceTimer.Stop();
-            _savePositionDebounceTimer.Start();
+            if (_savePositionDebounceTimer != null)
+            {
+                _savePositionDebounceTimer.Stop();
+                _savePositionDebounceTimer.Start();
+            }
         }
 
         /// <summary>
@@ -190,7 +196,10 @@ namespace DesktopAnnouncement
         private void SavePositionDebounceTimer_Tick(object? sender, EventArgs e)
         {
             // 停止定時器
-            _savePositionDebounceTimer.Stop();
+            if (_savePositionDebounceTimer != null)
+            {
+                _savePositionDebounceTimer.Stop();
+            }
 
             // 如果位置已改變，才儲存（避免不必要的磁盤寫入）
             if (_hasPositionChanged)
@@ -649,11 +658,12 @@ namespace DesktopAnnouncement
                     _windowLevelCheckTimer.Tick -= WindowLevelCheckTimer_Tick;
                 }
 
-                // 停止並清理視窗位置保存防抖定時器
+                // 停止並清理視窗位置保存防抖定時器，釋放所有引用以防止記憶體洩漏
                 if (_savePositionDebounceTimer != null)
                 {
                     _savePositionDebounceTimer.Stop();
                     _savePositionDebounceTimer.Tick -= SavePositionDebounceTimer_Tick;
+                    _savePositionDebounceTimer = null;  // 釋放引用
                 }
 
                 // 最後保存一次位置（確保最終位置被保存）

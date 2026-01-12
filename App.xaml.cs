@@ -83,10 +83,11 @@ namespace DesktopAnnouncement
         /// </summary>
         private void TerminateExistingInstance()
         {
+            Process? currentProcess = null;
             try
             {
                 // 取得當前處理程序資訊
-                var currentProcess = Process.GetCurrentProcess();
+                currentProcess = Process.GetCurrentProcess();
                 var currentProcessName = currentProcess.ProcessName;
                 var currentProcessId = currentProcess.Id;
 
@@ -152,6 +153,11 @@ namespace DesktopAnnouncement
             {
                 Debug.WriteLine($"[DesktopAnnouncement] 終止舊實例時發生錯誤: {ex.Message}");
             }
+            finally
+            {
+                // 確保當前進程物件被釋放
+                currentProcess?.Dispose();
+            }
         }
 
         /// <summary>
@@ -159,11 +165,24 @@ namespace DesktopAnnouncement
         /// </summary>
         protected override void OnExit(ExitEventArgs e)
         {
-            // 釋放互斥鎖
-            _mutex?.ReleaseMutex();
-            _mutex?.Dispose();
+            try
+            {
+                // 取消訂閱全域異常處理事件，防止記憶體洩漏
+                AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
+                DispatcherUnhandledException -= OnDispatcherUnhandledException;
 
-            base.OnExit(e);
+                // 釋放互斥鎖
+                _mutex?.ReleaseMutex();
+                _mutex?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 應用程式退出時發生異常：{ex.Message}");
+            }
+            finally
+            {
+                base.OnExit(e);
+            }
         }
     }
 }
