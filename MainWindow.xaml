@@ -1,0 +1,202 @@
+<Window x:Class="DesktopAnnouncement.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="桌面公告"
+        Width="360"
+        Height="280"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual">
+
+    <!-- 視窗資源定義 -->
+    <Window.Resources>
+        <!-- 水晶玻璃效果的漸層背景 -->
+        <LinearGradientBrush x:Key="GlassBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#40FFFFFF" Offset="0.0"/>
+            <GradientStop Color="#30E0F0FF" Offset="0.5"/>
+            <GradientStop Color="#20FFFFFF" Offset="1.0"/>
+        </LinearGradientBrush>
+
+        <!-- 外框光暈效果 -->
+        <DropShadowEffect x:Key="GlowEffect"
+                          Color="#4080D0FF"
+                          BlurRadius="25"
+                          ShadowDepth="0"
+                          Opacity="0.8"/>
+
+        <!-- 文字陰影效果 -->
+        <DropShadowEffect x:Key="TextShadow"
+                          Color="#80000000"
+                          BlurRadius="8"
+                          ShadowDepth="2"
+                          Opacity="0.6"/>
+    </Window.Resources>
+
+    <!-- 主容器：使用 Grid 布局 -->
+    <Grid>
+        <!-- 背景層：水晶玻璃效果 -->
+        <Border x:Name="MainBorder"
+                CornerRadius="20"
+                Background="{StaticResource GlassBrush}"
+                BorderBrush="#60FFFFFF"
+                BorderThickness="1.5"
+                Effect="{StaticResource GlowEffect}"
+                Margin="30"
+                MouseLeftButtonDown="MainBorder_MouseLeftButtonDown">
+
+            <!-- 內部白色霧面層 -->
+            <Border.OpacityMask>
+                <RadialGradientBrush>
+                    <GradientStop Color="#FFFFFFFF" Offset="0.3"/>
+                    <GradientStop Color="#F0FFFFFF" Offset="1.0"/>
+                </RadialGradientBrush>
+            </Border.OpacityMask>
+
+            <!-- 內容區域 -->
+            <Grid Margin="40,30">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 標題文字 -->
+                <TextBlock x:Name="TitleTextBlock"
+                           Grid.Row="0"
+                           Text="載入中..."
+                           FontSize="24"
+                           FontWeight="Medium"
+                           Foreground="#FFFFFF"
+                           HorizontalAlignment="Center"
+                           Effect="{StaticResource TextShadow}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
+
+                <!-- 中央數字區域 -->
+                <StackPanel Grid.Row="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+
+                    <!-- 天數數字 -->
+                    <TextBlock x:Name="DaysTextBlock"
+                               Text="0"
+                               FontSize="72"
+                               FontWeight="Bold"
+                               Effect="{StaticResource TextShadow}"
+                               Margin="0,0,10,0">
+                        <!-- 漸層文字效果 -->
+                        <TextBlock.Foreground>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#FFFFFF" Offset="0.0"/>
+                                <GradientStop Color="#D0E8FF" Offset="1.0"/>
+                            </LinearGradientBrush>
+                        </TextBlock.Foreground>
+                    </TextBlock>
+
+                    <!-- 後綴文字 -->
+                    <TextBlock x:Name="SuffixTextBlock"
+                               Text="天"
+                               FontSize="32"
+                               FontWeight="Light"
+                               Foreground="#F0FFFFFF"
+                               VerticalAlignment="Bottom"
+                               Effect="{StaticResource TextShadow}"
+                               Margin="0,0,0,12"/>
+                </StackPanel>
+
+                <!-- 底部裝飾線 -->
+                <Rectangle Grid.Row="2"
+                           Height="2"
+                           Fill="#40FFFFFF"
+                           Margin="40,10,40,0"
+                           RadiusX="1"
+                           RadiusY="1"/>
+            </Grid>
+        </Border>
+
+        <!-- 背景模糊層（視覺增強，僅裝飾用） -->
+        <Border CornerRadius="20"
+                Background="#10FFFFFF"
+                Margin="30"
+                IsHitTestVisible="False">
+            <Border.Effect>
+                <BlurEffect Radius="50"/>
+            </Border.Effect>
+        </Border>
+
+        <!-- 關閉按鈕 -->
+        <Button x:Name="CloseButton"
+                Width="28"
+                Height="28"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,38,38,0"
+                Click="CloseButton_Click"
+                Cursor="Hand"
+                Background="Transparent"
+                BorderThickness="0"
+                Opacity="0.8">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Grid Width="28" Height="28">
+                        <!-- 按鈕背景圓形 -->
+                        <Ellipse x:Name="ButtonBackground"
+                                 Fill="#35FFFFFF"
+                                 Stroke="#70FFFFFF"
+                                 StrokeThickness="1">
+                            <Ellipse.Effect>
+                                <DropShadowEffect Color="#6080D0FF"
+                                                  BlurRadius="8"
+                                                  ShadowDepth="0"
+                                                  Opacity="0.7"/>
+                            </Ellipse.Effect>
+                        </Ellipse>
+
+                        <!-- X 圖示使用 Canvas 精確定位 -->
+                        <Canvas Width="28" Height="28">
+                            <!-- 第一條斜線 (左上到右下) -->
+                            <Line X1="9" Y1="9" X2="19" Y2="19"
+                                  Stroke="#FFFFFF"
+                                  StrokeThickness="2">
+                                <Line.Effect>
+                                    <DropShadowEffect Color="#60000000"
+                                                      BlurRadius="2"
+                                                      ShadowDepth="1"
+                                                      Opacity="0.4"/>
+                                </Line.Effect>
+                            </Line>
+
+                            <!-- 第二條斜線 (右上到左下) -->
+                            <Line X1="19" Y1="9" X2="9" Y2="19"
+                                  Stroke="#FFFFFF"
+                                  StrokeThickness="2">
+                                <Line.Effect>
+                                    <DropShadowEffect Color="#60000000"
+                                                      BlurRadius="2"
+                                                      ShadowDepth="1"
+                                                      Opacity="0.4"/>
+                                </Line.Effect>
+                            </Line>
+                        </Canvas>
+                    </Grid>
+
+                    <!-- 滑鼠懸停效果 -->
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ButtonBackground" Property="Fill" Value="#55FFFFFF"/>
+                            <Setter TargetName="ButtonBackground" Property="Stroke" Value="#90FFFFFF"/>
+                            <Setter Property="Opacity" Value="1.0"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="ButtonBackground" Property="Fill" Value="#70FFFFFF"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+    </Grid>
+</Window>

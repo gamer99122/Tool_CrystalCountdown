@@ -1,0 +1,23 @@
+# 編譯輸出
+bin/
+obj/
+
+# Visual Studio
+.vs/
+
+# 發佈相關
+Release_Package/
+
+# 打包相關文件
+打包問題排除.md
+打包說明.md
+打包說明_最新.txt
+
+# 臨時文件
+tmpclaude-*
+
+# 其他編譯生成物
+*.dll
+*.exe
+*.pdb
+*.cache

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- 目標框架：.NET 8 -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+
+    <!-- 輸出類型：Windows 應用程式 -->
+    <OutputType>WinExe</OutputType>
+
+    <!-- 啟用 WPF -->
+    <UseWPF>true</UseWPF>
+
+    <!-- 啟用不安全程式碼（P/Invoke 需要） -->
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+
+    <!-- 應用程式資訊 -->
+    <AssemblyName>DesktopAnnouncement</AssemblyName>
+    <RootNamespace>DesktopAnnouncement</RootNamespace>
+
+    <!-- 語言版本 -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+
+    <!-- 發布設定 -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- 複製 config.txt 到輸出目錄 -->
+  <ItemGroup>
+    <None Update="config.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
