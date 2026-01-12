@@ -90,43 +90,61 @@ namespace DesktopAnnouncement
                 var currentProcessName = currentProcess.ProcessName;
                 var currentProcessId = currentProcess.Id;
 
-                // 尋找所有同名的處理程序
-                var existingProcesses = Process.GetProcessesByName(currentProcessName)
-                    .Where(p => p.Id != currentProcessId) // 排除當前處理程序
-                    .ToList();
-
-                // 終止所有舊實例（先優雅關閉，必要時才強制終止）
-                foreach (var process in existingProcesses)
+                // 尋找所有同名的處理程序，使用 using 確保 Process 物件被正確釋放
+                Process[] allProcesses = Process.GetProcessesByName(currentProcessName);
+                try
                 {
-                    try
+                    // 終止所有舊實例（先優雅關閉，必要時才強制終止）
+                    foreach (var process in allProcesses)
                     {
-                        Debug.WriteLine($"[DesktopAnnouncement] 嘗試關閉舊實例 (PID: {process.Id})");
-
-                        // 先嘗試優雅關閉（關閉主視窗）
-                        bool closedGracefully = process.CloseMainWindow();
-
-                        if (closedGracefully)
+                        // 跳過當前處理程序
+                        if (process.Id == currentProcessId)
                         {
-                            // 等待進程優雅關閉
-                            if (process.WaitForExit(2000))
-                            {
-                                Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已優雅關閉");
-                                continue;
-                            }
-                            else
-                            {
-                                Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 未在時間限制內關閉，進行強制終止");
-                            }
+                            process.Dispose();
+                            continue;
                         }
 
-                        // 如果優雅關閉失敗或超時，進行強制終止
-                        process.Kill();
-                        process.WaitForExit(1000);
-                        Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已強制終止");
+                        try
+                        {
+                            Debug.WriteLine($"[DesktopAnnouncement] 嘗試關閉舊實例 (PID: {process.Id})");
+
+                            // 先嘗試優雅關閉（關閉主視窗）
+                            bool closedGracefully = process.CloseMainWindow();
+
+                            if (closedGracefully)
+                            {
+                                // 等待進程優雅關閉
+                                if (process.WaitForExit(2000))
+                                {
+                                    Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已優雅關閉");
+                                    process.Dispose();
+                                    continue;
+                                }
+                                else
+                                {
+                                    Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 未在時間限制內關閉，進行強制終止");
+                                }
+                            }
+
+                            // 如果優雅關閉失敗或超時，進行強制終止
+                            process.Kill();
+                            process.WaitForExit(1000);
+                            Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已強制終止");
+                            process.Dispose();
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[DesktopAnnouncement] 無法終止處理程序 {process.Id}: {ex.Message}");
+                            process.Dispose();
+                        }
                     }
-                    catch (Exception ex)
+                }
+                finally
+                {
+                    // 確保所有 Process 物件都被釋放
+                    foreach (var process in allProcesses)
                     {
-                        Debug.WriteLine($"[DesktopAnnouncement] 無法終止處理程序 {process.Id}: {ex.Message}");
+                        process?.Dispose();
                     }
                 }
             }
