@@ -633,38 +633,50 @@ namespace DesktopAnnouncement
         /// </summary>
         protected override void OnClosed(EventArgs e)
         {
-            // 停止並釋放日期檢查定時器
-            if (_dateCheckTimer != null)
+            try
             {
-                _dateCheckTimer.Stop();
-                _dateCheckTimer.Tick -= DateCheckTimer_Tick;
-            }
+                // 停止並釋放日期檢查定時器
+                if (_dateCheckTimer != null)
+                {
+                    _dateCheckTimer.Stop();
+                    _dateCheckTimer.Tick -= DateCheckTimer_Tick;
+                    _dateCheckTimer.Dispose();
+                }
 
-            // 停止並釋放視窗層級監控定時器
-            if (_windowLevelCheckTimer != null)
+                // 停止並釋放視窗層級監控定時器
+                if (_windowLevelCheckTimer != null)
+                {
+                    _windowLevelCheckTimer.Stop();
+                    _windowLevelCheckTimer.Tick -= WindowLevelCheckTimer_Tick;
+                    _windowLevelCheckTimer.Dispose();
+                }
+
+                // 停止並釋放視窗位置保存防抖定時器
+                if (_savePositionDebounceTimer != null)
+                {
+                    _savePositionDebounceTimer.Stop();
+                    _savePositionDebounceTimer.Tick -= SavePositionDebounceTimer_Tick;
+                    _savePositionDebounceTimer.Dispose();
+                }
+
+                // 最後保存一次位置（確保最終位置被保存）
+                if (_hasPositionChanged)
+                {
+                    SaveWindowPosition();
+                }
+
+                // 取消事件訂閱
+                this.Loaded -= MainWindow_Loaded;
+                this.LocationChanged -= MainWindow_LocationChanged;
+            }
+            catch (Exception ex)
             {
-                _windowLevelCheckTimer.Stop();
-                _windowLevelCheckTimer.Tick -= WindowLevelCheckTimer_Tick;
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 視窗關閉時發生異常：{ex.GetType().Name} - {ex.Message}");
             }
-
-            // 停止並釋放視窗位置保存防抖定時器
-            if (_savePositionDebounceTimer != null)
+            finally
             {
-                _savePositionDebounceTimer.Stop();
-                _savePositionDebounceTimer.Tick -= SavePositionDebounceTimer_Tick;
+                base.OnClosed(e);
             }
-
-            // 最後保存一次位置（確保最終位置被保存）
-            if (_hasPositionChanged)
-            {
-                SaveWindowPosition();
-            }
-
-            // 取消事件訂閱
-            this.Loaded -= MainWindow_Loaded;
-            this.LocationChanged -= MainWindow_LocationChanged;
-
-            base.OnClosed(e);
         }
 
         #endregion
