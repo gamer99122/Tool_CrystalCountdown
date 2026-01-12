@@ -635,28 +635,25 @@ namespace DesktopAnnouncement
         {
             try
             {
-                // 停止並釋放日期檢查定時器
+                // 停止並清理日期檢查定時器（DispatcherTimer 不實現 IDisposable）
                 if (_dateCheckTimer != null)
                 {
                     _dateCheckTimer.Stop();
                     _dateCheckTimer.Tick -= DateCheckTimer_Tick;
-                    _dateCheckTimer.Dispose();
                 }
 
-                // 停止並釋放視窗層級監控定時器
+                // 停止並清理視窗層級監控定時器
                 if (_windowLevelCheckTimer != null)
                 {
                     _windowLevelCheckTimer.Stop();
                     _windowLevelCheckTimer.Tick -= WindowLevelCheckTimer_Tick;
-                    _windowLevelCheckTimer.Dispose();
                 }
 
-                // 停止並釋放視窗位置保存防抖定時器
+                // 停止並清理視窗位置保存防抖定時器
                 if (_savePositionDebounceTimer != null)
                 {
                     _savePositionDebounceTimer.Stop();
                     _savePositionDebounceTimer.Tick -= SavePositionDebounceTimer_Tick;
-                    _savePositionDebounceTimer.Dispose();
                 }
 
                 // 最後保存一次位置（確保最終位置被保存）
