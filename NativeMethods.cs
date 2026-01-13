@@ -73,6 +73,48 @@ namespace DesktopAnnouncement
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool IsWindow(IntPtr hWnd);
 
+        /// <summary>
+        /// 查找指定類別名稱的視窗
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        internal static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+
+        /// <summary>
+        /// 設置視窗的父視窗
+        /// </summary>
+        [DllImport("user32.dll")]
+        internal static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+
+        /// <summary>
+        /// 枚舉所有視窗
+        /// </summary>
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        /// <summary>
+        /// 枚舉視窗的回調函數委託
+        /// </summary>
+        internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        /// <summary>
+        /// 設定視窗樣式
+        /// </summary>
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern IntPtr GetWindowLong(IntPtr hWnd, int nIndex);
+
+        /// <summary>
+        /// 修改視窗樣式
+        /// </summary>
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern IntPtr SetWindowLong(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        /// <summary>
+        /// 取得視窗文字標題
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        internal static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
         #endregion
 
         #region 常數定義
@@ -106,6 +148,21 @@ namespace DesktopAnnouncement
         /// SetWindowPos 旗標：不啟動視窗
         /// </summary>
         internal const uint SWP_NOACTIVATE = 0x0010;
+
+        /// <summary>
+        /// 視窗樣式：WS_CHILD
+        /// </summary>
+        internal const int WS_CHILD = 0x40000000;
+
+        /// <summary>
+        /// 視窗樣式：WS_VISIBLE
+        /// </summary>
+        internal const int WS_VISIBLE = 0x10000000;
+
+        /// <summary>
+        /// GetWindowLong 索引：視窗樣式
+        /// </summary>
+        internal const int GWL_STYLE = -16;
 
         #endregion
 
@@ -289,6 +346,122 @@ namespace DesktopAnnouncement
             {
                 System.Diagnostics.Debug.WriteLine($"[ERROR] 檢查前景視窗時發生異常: {ex.Message}");
                 return false; // 發生錯誤時，預設不顯示
+            }
+        }
+
+        /// <summary>
+        /// 查找桌面視窗（Progman 或 WorkerW）
+        /// </summary>
+        /// <returns>桌面視窗 Handle，失敗返回 IntPtr.Zero</returns>
+        internal static IntPtr FindDesktopWindow()
+        {
+            try
+            {
+                // 首先嘗試查找 Progman（舊版 Windows）
+                IntPtr desktopWindow = FindWindow("Progman", null);
+                if (desktopWindow != IntPtr.Zero)
+                {
+                    System.Diagnostics.Debug.WriteLine("[INFO] 找到桌面窗口 (Progman)");
+                    return desktopWindow;
+                }
+
+                // 如果找不到 Progman，查找 WorkerW（Windows 7+）
+                // WorkerW 是隱藏的工作區窗口，需要通過枚舉查找
+                desktopWindow = FindWorkerWindow();
+                if (desktopWindow != IntPtr.Zero)
+                {
+                    System.Diagnostics.Debug.WriteLine("[INFO] 找到桌面窗口 (WorkerW)");
+                    return desktopWindow;
+                }
+
+                System.Diagnostics.Debug.WriteLine("[WARN] 無法找到桌面窗口");
+                return IntPtr.Zero;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 查找桌面窗口時發生異常：{ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        /// <summary>
+        /// 查找 WorkerW 窗口（Windows 7+）
+        /// </summary>
+        private static IntPtr FindWorkerWindow()
+        {
+            try
+            {
+                IntPtr progmanHandle = FindWindow("Progman", null);
+                if (progmanHandle == IntPtr.Zero)
+                    return IntPtr.Zero;
+
+                // WorkerW 是 Progman 的子窗口，通過枚舉查找
+                IntPtr workerWindow = IntPtr.Zero;
+
+                EnumWindowsProc enumProc = (hWnd, lParam) =>
+                {
+                    StringBuilder className = new StringBuilder(256);
+                    GetClassName(hWnd, className, className.Capacity);
+
+                    if (className.ToString() == "WorkerW")
+                    {
+                        // 檢查這個 WorkerW 是否是我們需要的（應該在 Progman 下）
+                        workerWindow = hWnd;
+                        return false; // 停止枚舉
+                    }
+
+                    return true; // 繼續枚舉
+                };
+
+                EnumWindows(enumProc, IntPtr.Zero);
+
+                return workerWindow;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 查找 WorkerW 窗口時發生異常：{ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        /// <summary>
+        /// 將視窗與桌面整合（成為桌面的子視窗）
+        /// </summary>
+        /// <param name="hWnd">要與桌面整合的視窗 Handle</param>
+        /// <returns>成功返回 true，失敗返回 false</returns>
+        internal static bool IntegrateWithDesktop(IntPtr hWnd)
+        {
+            try
+            {
+                if (hWnd == IntPtr.Zero)
+                {
+                    System.Diagnostics.Debug.WriteLine("[ERROR] 無效的視窗 Handle");
+                    return false;
+                }
+
+                // 查找桌面視窗
+                IntPtr desktopWindow = FindDesktopWindow();
+                if (desktopWindow == IntPtr.Zero)
+                {
+                    System.Diagnostics.Debug.WriteLine("[WARN] 無法找到桌面窗口，跳過桌面整合");
+                    return false;
+                }
+
+                // 將當前視窗設置為桌面的子視窗
+                IntPtr result = SetParent(hWnd, desktopWindow);
+                if (result == IntPtr.Zero)
+                {
+                    System.Diagnostics.Debug.WriteLine("[ERROR] SetParent 失敗");
+                    return false;
+                }
+
+                System.Diagnostics.Debug.WriteLine("[INFO] 視窗已與桌面整合");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 視窗與桌面整合時發生異常：{ex.Message}");
+                return false;
             }
         }
 

@@ -112,11 +112,36 @@ namespace DesktopAnnouncement
 
             // 注意：LocationChanged 已在建構函式中訂閱，無需重複訂閱
 
-            // 設定視窗層級為底層（在所有應用程式視窗下方）
-            SetWindowToBottom();
+            // 嘗試與桌面整合（成為桌面的子視窗）
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            bool desktopIntegrationSuccess = false;
 
-            // 啟動視窗層級監控定時器
-            _windowLevelCheckTimer.Start();
+            if (hwnd != IntPtr.Zero)
+            {
+                desktopIntegrationSuccess = NativeMethods.IntegrateWithDesktop(hwnd);
+
+                if (desktopIntegrationSuccess)
+                {
+                    System.Diagnostics.Debug.WriteLine("[INFO] 桌面整合成功，窗口現已成為桌面的一部分");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[WARN] 桌面整合失敗，降級使用傳統方式（設置為最底層）");
+                    // 如果桌面整合失敗，使用傳統方式：設定視窗層級為底層
+                    SetWindowToBottom();
+                }
+            }
+
+            // 只有在桌面整合失敗時才啟動視窗層級監控定時器（備援機制）
+            if (!desktopIntegrationSuccess)
+            {
+                _windowLevelCheckTimer.Start();
+                System.Diagnostics.Debug.WriteLine("[INFO] 視窗層級監控定時器已啟動（備援模式）");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[INFO] 桌面整合模式無需定時器監控");
+            }
 
             // 啟動日期檢查定時器
             ScheduleNextMidnightUpdate();
