@@ -226,6 +226,35 @@ namespace DesktopAnnouncement
         #region 核心邏輯
 
         /// <summary>
+        /// 讀取 config.txt 檔案內容（含重試邏輯以處理並發寫入）
+        /// </summary>
+        /// <returns>檔案內容（已修剪），如果讀取失敗則返回空字串</returns>
+        private string ReadConfigFileWithRetry()
+        {
+            const int maxRetries = 3;
+            const int retryDelayMs = 50;
+            int retryCount = 0;
+
+            while (retryCount < maxRetries)
+            {
+                try
+                {
+                    return File.ReadAllText(_configFilePath, Encoding.UTF8).Trim();
+                }
+                catch (IOException) when (retryCount < maxRetries - 1)
+                {
+                    // 檔案被鎖定或正在被寫入，重試
+                    retryCount++;
+                    System.Diagnostics.Debug.WriteLine($"[WARN] config.txt 被鎖定，重試 ({retryCount}/{maxRetries})");
+                    System.Threading.Thread.Sleep(retryDelayMs);
+                }
+            }
+
+            // 所有重試都失敗
+            return string.Empty;
+        }
+
+        /// <summary>
         /// 設定視窗位置到螢幕右下角（考慮工作列）
         /// </summary>
         private void SetWindowPositionToBottomRight()
@@ -391,20 +420,27 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
-        /// 檢查位置是否在螢幕範圍內（要求至少 50% 的視窗區域可見）
+        /// 檢查位置是否在螢幕範圍內（要求至少 50% 的視窗區域可見，支持多螢幕）
         /// </summary>
         private bool IsPositionValid(double left, double top)
         {
             try
             {
-                // 取得主螢幕工作區域
-                var workArea = SystemParameters.WorkArea;
+                // 取得虛擬螢幕範圍（支援多螢幕）
+                double virtualScreenLeft = SystemParameters.VirtualScreenLeft;
+                double virtualScreenTop = SystemParameters.VirtualScreenTop;
+                double virtualScreenWidth = SystemParameters.VirtualScreenWidth;
+                double virtualScreenHeight = SystemParameters.VirtualScreenHeight;
 
-                // 計算視窗在螢幕內的可見區域
-                double visibleLeft = Math.Max(left, workArea.Left);
-                double visibleTop = Math.Max(top, workArea.Top);
-                double visibleRight = Math.Min(left + this.Width, workArea.Right);
-                double visibleBottom = Math.Min(top + this.Height, workArea.Bottom);
+                // 虛擬螢幕的邊界
+                double virtualScreenRight = virtualScreenLeft + virtualScreenWidth;
+                double virtualScreenBottom = virtualScreenTop + virtualScreenHeight;
+
+                // 計算視窗在虛擬螢幕範圍內的可見區域
+                double visibleLeft = Math.Max(left, virtualScreenLeft);
+                double visibleTop = Math.Max(top, virtualScreenTop);
+                double visibleRight = Math.Min(left + this.Width, virtualScreenRight);
+                double visibleBottom = Math.Min(top + this.Height, virtualScreenBottom);
 
                 // 計算可見寬度和高度
                 double visibleWidth = Math.Max(0, visibleRight - visibleLeft);
@@ -417,6 +453,13 @@ namespace DesktopAnnouncement
                 // 確保至少 50% 的視窗面積在螢幕內
                 const double MIN_VISIBLE_RATIO = 0.5;
                 bool isVisibleEnough = (totalArea > 0) && (visibleArea / totalArea >= MIN_VISIBLE_RATIO);
+
+                if (!isVisibleEnough)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[WARN] 視窗位置無效：({left:F0}, {top:F0})，可見面積比例 {(visibleArea / totalArea):P1}，虛擬螢幕範圍：({virtualScreenLeft:F0}, {virtualScreenTop:F0}) - ({virtualScreenRight:F0}, {virtualScreenBottom:F0})"
+                    );
+                }
 
                 return isVisibleEnough;
             }
@@ -450,8 +493,8 @@ namespace DesktopAnnouncement
                     return;
                 }
 
-                // 讀取檔案內容（明確指定 UTF8 編碼）
-                string content = File.ReadAllText(_configFilePath, Encoding.UTF8).Trim();
+                // 讀取檔案內容（明確指定 UTF8 編碼，含重試邏輯防止併發寫入）
+                string content = ReadConfigFileWithRetry();
                 if (string.IsNullOrWhiteSpace(content))
                 {
                     SetErrorState("config.txt 檔案為空");
@@ -475,12 +518,20 @@ namespace DesktopAnnouncement
                     return;
                 }
 
-                // 取得標題
+                // 取得標題（限制長度防止 UI 溢出）
                 _announcementTitle = parts[1].Trim();
+                const int maxTitleLength = 100;
+
                 if (string.IsNullOrWhiteSpace(_announcementTitle))
                 {
                     SetErrorState("標題文字不可為空");
                     return;
+                }
+
+                if (_announcementTitle.Length > maxTitleLength)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[WARN] 標題文字過長（{_announcementTitle.Length} 字符），已截斷至 {maxTitleLength} 字符");
+                    _announcementTitle = _announcementTitle.Substring(0, maxTitleLength);
                 }
 
                 // 計算並更新顯示
