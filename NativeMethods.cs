@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -135,6 +135,11 @@ namespace DesktopAnnouncement
         internal static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
 
         /// <summary>
+        /// SetWindowPos：將視窗置於最上層(總是在其他視窗之上)
+        /// </summary>
+        internal static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+
+        /// <summary>
         /// SetWindowPos 旗標：保持當前大小
         /// </summary>
         internal const uint SWP_NOSIZE = 0x0001;
@@ -163,6 +168,16 @@ namespace DesktopAnnouncement
         /// GetWindowLong 索引：視窗樣式
         /// </summary>
         internal const int GWL_STYLE = -16;
+
+        /// <summary>
+        /// GetWindowLong 索引:擴展視窗樣式
+        /// </summary>
+        internal const int GWL_EXSTYLE = -20;
+
+        /// <summary>
+        /// 擴展視窗樣式:視窗不會被激活(不搶奪焦點)
+        /// </summary>
+        internal const int WS_EX_NOACTIVATE = 0x08000000;
 
         #endregion
 

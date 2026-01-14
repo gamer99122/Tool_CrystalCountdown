@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -41,7 +41,7 @@ namespace DesktopAnnouncement
         private readonly DispatcherTimer _dateCheckTimer;
 
         /// <summary>
-        /// 定時器，用於持續監控視窗層級（確保視窗保持在最底層）
+        /// 定時器，用於持續監控視窗層級（確保視窗保持在底層）
         /// 注意：主要依賴 Activated 事件，此定時器僅作為備援機制
         /// </summary>
         private readonly DispatcherTimer _windowLevelCheckTimer;
@@ -112,37 +112,23 @@ namespace DesktopAnnouncement
 
             // 注意：LocationChanged 已在建構函式中訂閱，無需重複訂閱
 
-            // 嘗試與桌面整合（成為桌面的子視窗）
+            // 設定視窗擴展樣式為 WS_EX_NOACTIVATE(不搶奪焦點)
             IntPtr hwnd = new WindowInteropHelper(this).Handle;
-            bool desktopIntegrationSuccess = false;
-
             if (hwnd != IntPtr.Zero)
             {
-                desktopIntegrationSuccess = NativeMethods.IntegrateWithDesktop(hwnd);
+                // 添加 WS_EX_NOACTIVATE 擴展樣式
+                IntPtr exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
+                exStyle = new IntPtr(exStyle.ToInt32() | NativeMethods.WS_EX_NOACTIVATE);
+                NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
 
-                if (desktopIntegrationSuccess)
-                {
-                    System.Diagnostics.Debug.WriteLine("[INFO] 桌面整合成功，窗口現已成為桌面的一部分");
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine("[WARN] 桌面整合失敗，降級使用傳統方式（設置為最底層）");
-                    // 如果桌面整合失敗，使用傳統方式：設定視窗層級為底層
-                    SetWindowToBottom();
-                }
+                // 設定視窗層級為底層
+                SetWindowToBottom();
+                System.Diagnostics.Debug.WriteLine("[INFO] 視窗已設置為桌面層級(BOTTOM + NOACTIVATE)");
             }
 
-            // 只有在桌面整合失敗時才啟動視窗層級監控定時器（備援機制）
-            if (!desktopIntegrationSuccess)
-            {
-                _windowLevelCheckTimer.Start();
-                System.Diagnostics.Debug.WriteLine("[INFO] 視窗層級監控定時器已啟動（備援模式）");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("[INFO] 桌面整合模式無需定時器監控");
-            }
-
+            // 啟動視窗層級監控定時器,確保視窗保持在底層
+            _windowLevelCheckTimer.Start();
+            System.Diagnostics.Debug.WriteLine("[INFO] 視窗層級監控定時器已啟動");
             // 啟動日期檢查定時器
             ScheduleNextMidnightUpdate();
         }
@@ -169,11 +155,11 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
-        /// 視窗層級監控定時器觸發事件（每 10 秒檢查一次作為備援，確保視窗保持在最底層）
+        /// 視窗層級監控定時器觸發事件（每 10 秒檢查一次作為備援，確保視窗保持在底層）
         /// </summary>
         private void WindowLevelCheckTimer_Tick(object? sender, EventArgs e)
         {
-            // 確保視窗保持在最底層（作為備援機制）
+            // 確保視窗保持在底層（作為備援機制）
             SetWindowToBottom();
         }
 
@@ -196,7 +182,7 @@ namespace DesktopAnnouncement
                 // 拖拽視窗
                 this.DragMove();
 
-                // 拖拽結束後重新設定視窗層級為底層
+                // 拖拽結束後重新設定視窗層級為最上層
                 SetWindowToBottom();
             }
             catch (InvalidOperationException ex)
@@ -705,6 +691,44 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
+        /// 設定視窗層級為最上層(永遠在其他視窗之上)
+        /// </summary>
+        private void SetWindowToTopmost()
+        {
+            try
+            {
+                // 取得視窗 Handle
+                IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                // 設定視窗層級為 HWND_TOPMOST
+                // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE:保持當前大小、位置,且不啟動視窗
+                bool success = NativeMethods.SetWindowPos(
+                    hwnd,
+                    NativeMethods.HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOACTIVATE
+                );
+
+                if (!success)
+                {
+                    System.Diagnostics.Debug.WriteLine("[WARN] SetWindowPos 返回失敗");
+                }
+            }
+            catch (DllNotFoundException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WARN] Win32 DLL 未找到:{ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 設定視窗層級時發生錯誤:{ex.GetType().Name} - {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 計算並設定下一次凌晨 00:00 的更新時間
         /// 注意：考慮時區變更（如夏令時）的影響，使用防禦性檢查確保穩定性
         /// </summary>
@@ -838,3 +862,6 @@ namespace DesktopAnnouncement
         #endregion
     }
 }
+
+
+
