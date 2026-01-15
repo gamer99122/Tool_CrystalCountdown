@@ -73,6 +73,62 @@ namespace DesktopAnnouncement
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool IsWindow(IntPtr hWnd);
 
+        /// <summary>
+        /// 發送訊息到視窗
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        internal static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        /// <summary>
+        /// 發送訊息到視窗（帶超時）
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        internal static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
+        /// <summary>
+        /// 尋找視窗
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        internal static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
+
+        /// <summary>
+        /// 尋找子視窗
+        /// </summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        internal static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string? lpszClass, string? lpszWindow);
+
+        /// <summary>
+        /// 設定視窗的父視窗
+        /// </summary>
+        [DllImport("user32.dll")]
+        internal static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+
+        /// <summary>
+        /// 枚舉視窗的回調委派
+        /// </summary>
+        internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        /// <summary>
+        /// 枚舉所有頂層視窗
+        /// </summary>
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        /// <summary>
+        /// 檢查視窗是否可見
+        /// </summary>
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool IsWindowVisible(IntPtr hWnd);
+
+        /// <summary>
+        /// 顯示視窗
+        /// </summary>
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
         #endregion
 
         #region 常數定義
@@ -93,6 +149,16 @@ namespace DesktopAnnouncement
         internal static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
 
         /// <summary>
+        /// SetWindowPos：將視窗置於最上層（始終在最前面）
+        /// </summary>
+        internal static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+
+        /// <summary>
+        /// SetWindowPos：取消視窗的最上層狀態
+        /// </summary>
+        internal static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+
+        /// <summary>
         /// SetWindowPos 旗標：保持當前大小
         /// </summary>
         internal const uint SWP_NOSIZE = 0x0001;
@@ -106,6 +172,11 @@ namespace DesktopAnnouncement
         /// SetWindowPos 旗標：不啟動視窗
         /// </summary>
         internal const uint SWP_NOACTIVATE = 0x0010;
+
+        /// <summary>
+        /// ShowWindow 參數：顯示視窗並保持當前大小和位置
+        /// </summary>
+        internal const int SW_SHOWNOACTIVATE = 4;
 
         #endregion
 
@@ -243,6 +314,62 @@ namespace DesktopAnnouncement
                         System.Diagnostics.Debug.WriteLine($"[ERROR] 關閉處理程序句柄時發生異常: {ex.Message}");
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// 取得桌面背景的視窗 Handle（優先使用 Progman，其次使用 WorkerW）
+        /// </summary>
+        /// <returns>桌面視窗 Handle，失敗時返回 IntPtr.Zero</returns>
+        internal static IntPtr GetDesktopWindow()
+        {
+            try
+            {
+                // 1. 找到 Progman 視窗（程式管理器，負責桌面背景）
+                IntPtr progman = FindWindow("Progman", null);
+                if (progman == IntPtr.Zero)
+                {
+                    System.Diagnostics.Debug.WriteLine("[WARN] 找不到 Progman 視窗");
+                    return IntPtr.Zero;
+                }
+
+                // 2. 發送 0x052C 訊息給 Progman，讓它創建 WorkerW 視窗
+                // 這是一個未公開的訊息，用於在桌面背景和圖示之間創建一個視窗層
+                SendMessageTimeout(progman, 0x052C, IntPtr.Zero, IntPtr.Zero, 0x0000, 1000, out _);
+
+                // 3. 枚舉所有視窗，找到包含 SHELLDLL_DefView 的視窗
+                IntPtr workerW = IntPtr.Zero;
+                IntPtr defViewParent = IntPtr.Zero;
+
+                EnumWindows((hWnd, lParam) =>
+                {
+                    // 檢查此視窗是否包含 SHELLDLL_DefView 子視窗
+                    IntPtr shellView = FindWindowEx(hWnd, IntPtr.Zero, "SHELLDLL_DefView", null);
+                    if (shellView != IntPtr.Zero)
+                    {
+                        defViewParent = hWnd;
+                        // 找到它後面的 WorkerW
+                        workerW = FindWindowEx(IntPtr.Zero, hWnd, "WorkerW", null);
+                    }
+                    return true; // 繼續枚舉
+                }, IntPtr.Zero);
+
+                // 4. 優先返回 WorkerW（如果存在），否則返回 Progman
+                // WorkerW 在桌面圖示下方，適合放置桌面小工具
+                if (workerW != IntPtr.Zero)
+                {
+                    System.Diagnostics.Debug.WriteLine("[INFO] 使用 WorkerW 作為桌面父視窗");
+                    return workerW;
+                }
+
+                // 如果沒有 WorkerW，使用 Progman
+                System.Diagnostics.Debug.WriteLine("[INFO] 使用 Progman 作為桌面父視窗");
+                return progman;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 取得桌面視窗時發生異常：{ex.Message}");
+                return IntPtr.Zero;
             }
         }
 

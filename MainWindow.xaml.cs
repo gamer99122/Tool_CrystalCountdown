@@ -41,10 +41,9 @@ namespace DesktopAnnouncement
         private readonly DispatcherTimer _dateCheckTimer;
 
         /// <summary>
-        /// 定時器，用於持續監控視窗層級（確保視窗保持在最底層）
-        /// 注意：主要依賴 Activated 事件，此定時器僅作為備援機制
+        /// 定時器，用於監控視窗可見性（處理「顯示桌面」按鈕導致的隱藏問題）
         /// </summary>
-        private readonly DispatcherTimer _windowLevelCheckTimer;
+        private readonly DispatcherTimer _visibilityCheckTimer;
 
         /// <summary>
         /// 視窗位置變化防抖定時器（避免頻繁寫入磁盤）
@@ -55,6 +54,11 @@ namespace DesktopAnnouncement
         /// 標記視窗位置是否已改變
         /// </summary>
         private bool _hasPositionChanged = false;
+
+        /// <summary>
+        /// 桌面 WorkerW 視窗 Handle（保留以便未來使用）
+        /// </summary>
+        private IntPtr _desktopWorkerW = IntPtr.Zero;
 
         #endregion
 
@@ -71,7 +75,6 @@ namespace DesktopAnnouncement
             // 在建構函式中訂閱事件，確保與 OnClosed 中的取消訂閱生命週期一致
             // 防止記憶體洩漏（避免在視窗加載前關閉時遺漏的事件訂閱）
             this.LocationChanged += MainWindow_LocationChanged;
-            this.Activated += MainWindow_Activated;
 
             // 設定設定檔路徑（與執行檔同目錄）
             _configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt");
@@ -81,10 +84,10 @@ namespace DesktopAnnouncement
             _dateCheckTimer = new DispatcherTimer();
             _dateCheckTimer.Tick += DateCheckTimer_Tick;
 
-            // 初始化視窗層級監控定時器（每 10 秒檢查一次作為備援，主要依賴 Activated 事件）
-            _windowLevelCheckTimer = new DispatcherTimer();
-            _windowLevelCheckTimer.Interval = TimeSpan.FromSeconds(10);
-            _windowLevelCheckTimer.Tick += WindowLevelCheckTimer_Tick;
+            // 初始化可見性監控定時器（每 500ms 檢查一次，處理「顯示桌面」按鈕問題）
+            _visibilityCheckTimer = new DispatcherTimer();
+            _visibilityCheckTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _visibilityCheckTimer.Tick += VisibilityCheckTimer_Tick;
 
             // 初始化視窗位置保存防抖定時器（避免頻繁I/O）
             _savePositionDebounceTimer = new DispatcherTimer();
@@ -112,11 +115,11 @@ namespace DesktopAnnouncement
 
             // 注意：LocationChanged 已在建構函式中訂閱，無需重複訂閱
 
-            // 設定視窗層級為底層（在所有應用程式視窗下方）
-            SetWindowToBottom();
+            // 將視窗嵌入桌面（讓視窗成為桌面的一部分）
+            EmbedInDesktop();
 
-            // 啟動視窗層級監控定時器
-            _windowLevelCheckTimer.Start();
+            // 啟動可見性監控定時器（處理「顯示桌面」按鈕問題）
+            _visibilityCheckTimer.Start();
 
             // 啟動日期檢查定時器
             ScheduleNextMidnightUpdate();
@@ -135,21 +138,60 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
-        /// 視窗激活事件（當視窗被激活時立即將其設置回底層）
+        /// 可見性檢查定時器觸發事件
+        /// 處理「顯示桌面」按鈕導致視窗被隱藏的問題
         /// </summary>
-        private void MainWindow_Activated(object? sender, EventArgs e)
+        private void VisibilityCheckTimer_Tick(object? sender, EventArgs e)
         {
-            // 視窗被激活時，立即將其設置回底層
-            SetWindowToBottom();
-        }
+            try
+            {
+                IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero) return;
 
-        /// <summary>
-        /// 視窗層級監控定時器觸發事件（每 10 秒檢查一次作為備援，確保視窗保持在最底層）
-        /// </summary>
-        private void WindowLevelCheckTimer_Tick(object? sender, EventArgs e)
-        {
-            // 確保視窗保持在最底層（作為備援機制）
-            SetWindowToBottom();
+                // 檢查視窗是否可見
+                if (!NativeMethods.IsWindowVisible(hwnd))
+                {
+                    // 視窗被隱藏了，重新顯示它
+                    NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOWNOACTIVATE);
+                    System.Diagnostics.Debug.WriteLine("[INFO] 視窗被隱藏，已重新顯示");
+                }
+
+                // 檢查當前前景視窗是否為桌面
+                bool isDesktopForeground = NativeMethods.IsForegroundWindowDesktop();
+
+                if (isDesktopForeground)
+                {
+                    // 桌面是前景視窗（例如點擊了「顯示桌面」）
+                    // 將視窗暫時提到最上層，讓它顯示在桌面上方
+                    NativeMethods.SetWindowPos(
+                        hwnd,
+                        NativeMethods.HWND_TOPMOST,
+                        0, 0, 0, 0,
+                        NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOACTIVATE
+                    );
+                    // 立即取消置頂（這樣其他視窗可以蓋過它）
+                    NativeMethods.SetWindowPos(
+                        hwnd,
+                        NativeMethods.HWND_NOTOPMOST,
+                        0, 0, 0, 0,
+                        NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOACTIVATE
+                    );
+                }
+                else
+                {
+                    // 其他應用程式是前景視窗，保持在底層
+                    NativeMethods.SetWindowPos(
+                        hwnd,
+                        NativeMethods.HWND_BOTTOM,
+                        0, 0, 0, 0,
+                        NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOACTIVATE
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ERROR] 檢查視窗可見性時發生錯誤：{ex.Message}");
+            }
         }
 
         /// <summary>
@@ -170,9 +212,6 @@ namespace DesktopAnnouncement
             {
                 // 拖拽視窗
                 this.DragMove();
-
-                // 拖拽結束後重新設定視窗層級為底層
-                SetWindowToBottom();
             }
             catch (InvalidOperationException ex)
             {
@@ -591,9 +630,10 @@ namespace DesktopAnnouncement
         }
 
         /// <summary>
-        /// 設定視窗層級為底層（在所有應用程式視窗的下方）
+        /// 將視窗設定為桌面層級
+        /// 使用 HWND_BOTTOM 確保視窗在所有應用程式下方但仍可見
         /// </summary>
-        private void SetWindowToBottom()
+        private void EmbedInDesktop()
         {
             try
             {
@@ -601,26 +641,19 @@ namespace DesktopAnnouncement
                 IntPtr hwnd = new WindowInteropHelper(this).Handle;
                 if (hwnd == IntPtr.Zero)
                 {
+                    System.Diagnostics.Debug.WriteLine("[WARN] 無法取得視窗 Handle");
                     return;
                 }
 
-                // 設定視窗層級為 HWND_BOTTOM
-                // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE：保持當前大小、位置，且不啟動視窗
-                bool success = NativeMethods.SetWindowPos(
+                // 使用 HWND_BOTTOM 將視窗放到最底層
+                NativeMethods.SetWindowPos(
                     hwnd,
                     NativeMethods.HWND_BOTTOM,
                     0, 0, 0, 0,
                     NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOACTIVATE
                 );
 
-                if (!success)
-                {
-                    System.Diagnostics.Debug.WriteLine("[WARN] SetWindowPos 返回失敗");
-                }
-            }
-            catch (DllNotFoundException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[WARN] Win32 DLL 未找到：{ex.Message}");
+                System.Diagnostics.Debug.WriteLine("[INFO] 視窗已設定為底層");
             }
             catch (Exception ex)
             {
@@ -723,11 +756,11 @@ namespace DesktopAnnouncement
                     _dateCheckTimer.Tick -= DateCheckTimer_Tick;
                 }
 
-                // 停止並清理視窗層級監控定時器
-                if (_windowLevelCheckTimer != null)
+                // 停止並清理可見性監控定時器
+                if (_visibilityCheckTimer != null)
                 {
-                    _windowLevelCheckTimer.Stop();
-                    _windowLevelCheckTimer.Tick -= WindowLevelCheckTimer_Tick;
+                    _visibilityCheckTimer.Stop();
+                    _visibilityCheckTimer.Tick -= VisibilityCheckTimer_Tick;
                 }
 
                 // 停止並清理視窗位置保存防抖定時器，釋放所有引用以防止記憶體洩漏
@@ -747,7 +780,6 @@ namespace DesktopAnnouncement
                 // 取消事件訂閱
                 this.Loaded -= MainWindow_Loaded;
                 this.LocationChanged -= MainWindow_LocationChanged;
-                this.Activated -= MainWindow_Activated;
             }
             catch (Exception ex)
             {
