@@ -8,7 +8,8 @@
       "Bash(where:*)",
       "Bash(dotnet tool list:*)",
       "Bash(csharp-ls:*)",
-      "Bash(dotnet tool install:*)"
+      "Bash(dotnet tool install:*)",
+      "Bash(git merge:*)"
     ]
   }
 }

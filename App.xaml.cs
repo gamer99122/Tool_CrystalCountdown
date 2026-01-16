@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace DesktopAnnouncement
 {
@@ -21,14 +22,27 @@ namespace DesktopAnnouncement
         /// </summary>
         protected override void OnStartup(StartupEventArgs e)
         {
+            // 記錄啟動
+            Logger.Info($"應用程式啟動 (PID: {Process.GetCurrentProcess().Id})");
+            Logger.Info($"OS Version: {Environment.OSVersion}, 64-bit: {Environment.Is64BitOperatingSystem}");
+
             // 建立全域互斥鎖
             const string mutexName = "Global\\DesktopAnnouncement_SingleInstance_Mutex";
             bool createdNew;
 
-            _mutex = new Mutex(true, mutexName, out createdNew);
+            try 
+            {
+                _mutex = new Mutex(true, mutexName, out createdNew);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("建立 Mutex 失敗", ex);
+                createdNew = true; // 假設是新的，嘗試繼續執行
+            }
 
             if (!createdNew)
             {
+                Logger.Info("偵測到已存在的實例，準備切換...");
                 // 已有實例在執行，關閉舊實例並啟動新的
                 TerminateExistingInstance();
 
@@ -36,8 +50,16 @@ namespace DesktopAnnouncement
                 Thread.Sleep(500);
 
                 // 重新建立互斥鎖
-                _mutex?.Dispose();
-                _mutex = new Mutex(true, mutexName, out createdNew);
+                try
+                {
+                    _mutex?.Dispose();
+                    _mutex = new Mutex(true, mutexName, out createdNew);
+                    Logger.Info($"重新取得 Mutex 結果: {createdNew}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("重新建立 Mutex 失敗", ex);
+                }
             }
 
             base.OnStartup(e);
@@ -54,6 +76,7 @@ namespace DesktopAnnouncement
         {
             if (e.ExceptionObject is Exception ex)
             {
+                Logger.Error("[CRITICAL] 非 UI 執行緒未處理的例外", ex);
                 System.Diagnostics.Debug.WriteLine($"[CRITICAL] 非 UI 執行緒未處理的例外：{ex.GetType().Name}");
                 System.Diagnostics.Debug.WriteLine($"[CRITICAL] 訊息：{ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"[CRITICAL] 堆疊追蹤：{ex.StackTrace}");
@@ -61,16 +84,22 @@ namespace DesktopAnnouncement
                 // 如果是致命錯誤，記錄完整堆疊
                 if (e.IsTerminating)
                 {
+                    Logger.Error("[CRITICAL] 應用程式即將終止");
                     System.Diagnostics.Debug.WriteLine("[CRITICAL] 應用程式即將終止");
                 }
+            }
+            else
+            {
+                Logger.Error($"[CRITICAL] 非 UI 執行緒未處理的未知物件: {e.ExceptionObject}");
             }
         }
 
         /// <summary>
         /// 處理 UI 執行緒的未處理例外
         /// </summary>
-        private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+        private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
+            Logger.Error("[ERROR] UI 執行緒未處理的例外", e.Exception);
             System.Diagnostics.Debug.WriteLine($"[ERROR] UI 執行緒未處理的例外：{e.Exception.GetType().Name}");
             System.Diagnostics.Debug.WriteLine($"[ERROR] 訊息：{e.Exception.Message}");
             System.Diagnostics.Debug.WriteLine($"[ERROR] 堆疊追蹤：{e.Exception.StackTrace}");
@@ -91,8 +120,12 @@ namespace DesktopAnnouncement
                 var currentProcessName = currentProcess.ProcessName;
                 var currentProcessId = currentProcess.Id;
 
+                Logger.Info($"正在尋找舊實例: {currentProcessName} (Current PID: {currentProcessId})");
+
                 // 尋找所有同名的處理程序，使用 using 確保 Process 物件被正確釋放
                 Process[] allProcesses = Process.GetProcessesByName(currentProcessName);
+                Logger.Info($"找到 {allProcesses.Length} 個同名程序");
+
                 try
                 {
                     // 終止所有舊實例（先優雅關閉，必要時才強制終止）
@@ -107,6 +140,7 @@ namespace DesktopAnnouncement
 
                         try
                         {
+                            Logger.Info($"[DesktopAnnouncement] 嘗試關閉舊實例 (PID: {process.Id})");
                             Debug.WriteLine($"[DesktopAnnouncement] 嘗試關閉舊實例 (PID: {process.Id})");
 
                             // 先嘗試優雅關閉（關閉主視窗）
@@ -117,12 +151,14 @@ namespace DesktopAnnouncement
                                 // 等待進程優雅關閉
                                 if (process.WaitForExit(2000))
                                 {
+                                    Logger.Info($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已優雅關閉");
                                     Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已優雅關閉");
                                     process.Dispose();
                                     continue;
                                 }
                                 else
                                 {
+                                    Logger.Warn($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 未在時間限制內關閉，進行強制終止");
                                     Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 未在時間限制內關閉，進行強制終止");
                                 }
                             }
@@ -130,11 +166,13 @@ namespace DesktopAnnouncement
                             // 如果優雅關閉失敗或超時，進行強制終止
                             process.Kill();
                             process.WaitForExit(1000);
+                            Logger.Info($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已強制終止");
                             Debug.WriteLine($"[DesktopAnnouncement] 舊實例 (PID: {process.Id}) 已強制終止");
                             process.Dispose();
                         }
                         catch (Exception ex)
                         {
+                            Logger.Error($"[DesktopAnnouncement] 無法終止處理程序 {process.Id}", ex);
                             Debug.WriteLine($"[DesktopAnnouncement] 無法終止處理程序 {process.Id}: {ex.Message}");
                             process.Dispose();
                         }
@@ -151,6 +189,7 @@ namespace DesktopAnnouncement
             }
             catch (Exception ex)
             {
+                Logger.Error($"[DesktopAnnouncement] 終止舊實例時發生錯誤", ex);
                 Debug.WriteLine($"[DesktopAnnouncement] 終止舊實例時發生錯誤: {ex.Message}");
             }
             finally
@@ -167,6 +206,8 @@ namespace DesktopAnnouncement
         {
             try
             {
+                Logger.Info($"應用程式正在退出 (ExitCode: {e.ApplicationExitCode})");
+                
                 // 取消訂閱全域異常處理事件，防止記憶體洩漏
                 AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
                 DispatcherUnhandledException -= OnDispatcherUnhandledException;
@@ -177,6 +218,7 @@ namespace DesktopAnnouncement
             }
             catch (Exception ex)
             {
+                Logger.Error($"[ERROR] 應用程式退出時發生異常", ex);
                 System.Diagnostics.Debug.WriteLine($"[ERROR] 應用程式退出時發生異常：{ex.Message}");
             }
             finally

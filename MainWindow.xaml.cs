@@ -116,19 +116,29 @@ namespace DesktopAnnouncement
             IntPtr hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd != IntPtr.Zero)
             {
-                // 添加 WS_EX_NOACTIVATE 擴展樣式
-                IntPtr exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-                exStyle = new IntPtr(exStyle.ToInt32() | NativeMethods.WS_EX_NOACTIVATE);
-                NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+                try
+                {
+                    // 添加 WS_EX_NOACTIVATE 擴展樣式
+                    // 使用 ToInt64 以確保在 64 位元系統上的安全性
+                    IntPtr exStylePtr = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
+                    long exStyle = exStylePtr.ToInt64();
+                    exStyle |= NativeMethods.WS_EX_NOACTIVATE;
+                    
+                    NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
 
-                // 設定視窗層級為底層
-                SetWindowToBottom();
-                System.Diagnostics.Debug.WriteLine("[INFO] 視窗已設置為桌面層級(BOTTOM + NOACTIVATE)");
+                    // 設定視窗層級為底層
+                    SetWindowToBottom();
+                    Logger.Info("[INFO] 視窗已設置為桌面層級(BOTTOM + NOACTIVATE)");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("[ERROR] 設定視窗樣式時發生錯誤", ex);
+                }
             }
 
             // 啟動視窗層級監控定時器,確保視窗保持在底層
             _windowLevelCheckTimer.Start();
-            System.Diagnostics.Debug.WriteLine("[INFO] 視窗層級監控定時器已啟動");
+            Logger.Info("[INFO] 視窗層級監控定時器已啟動");
             // 啟動日期檢查定時器
             ScheduleNextMidnightUpdate();
         }
@@ -301,7 +311,7 @@ namespace DesktopAnnouncement
                 }
                 catch
                 {
-                    System.Diagnostics.Debug.WriteLine("[ERROR] 無法設定預設位置");
+                    Logger.Error("[ERROR] 無法設定預設位置");
                 }
             }
         }
@@ -566,7 +576,7 @@ namespace DesktopAnnouncement
             catch (OutOfMemoryException ex)
             {
                 SetErrorState("記憶體不足，無法讀取設定檔");
-                System.Diagnostics.Debug.WriteLine($"[CRITICAL] {ex}");
+                Logger.Error($"[CRITICAL] Memory Error", ex);
             }
             catch (Exception ex)
             {
@@ -686,6 +696,8 @@ namespace DesktopAnnouncement
             }
             catch (Exception ex)
             {
+                // 減少日誌噪音，這個錯誤可能很頻繁
+                // Logger.Error($"[ERROR] 設定視窗層級時發生錯誤", ex);
                 System.Diagnostics.Debug.WriteLine($"[ERROR] 設定視窗層級時發生錯誤：{ex.GetType().Name} - {ex.Message}");
             }
         }
@@ -851,7 +863,7 @@ namespace DesktopAnnouncement
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 視窗關閉時發生異常：{ex.GetType().Name} - {ex.Message}");
+                Logger.Error($"[ERROR] 視窗關閉時發生異常", ex);
             }
             finally
             {

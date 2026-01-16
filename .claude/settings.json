@@ -1,0 +1,9 @@
+{
+  "languages": {
+    "csharp": {
+      "command": ["csharp-ls"],
+      "fileExtensions": ["cs"],
+      "rootFiles": ["*.sln", "*.csproj"]
+    }
+  }
+}

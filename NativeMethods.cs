@@ -97,17 +97,47 @@ namespace DesktopAnnouncement
         /// </summary>
         internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-        /// <summary>
-        /// 設定視窗樣式
-        /// </summary>
-        [DllImport("user32.dll", SetLastError = true)]
-        internal static extern IntPtr GetWindowLong(IntPtr hWnd, int nIndex);
+        #region GetWindowLong / SetWindowLong (32/64 bit compatible)
+
+        // 32-bit signature
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+        private static extern IntPtr GetWindowLong32(IntPtr hWnd, int nIndex);
+
+        // 64-bit signature
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
+        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
 
         /// <summary>
-        /// 修改視窗樣式
+        /// 設定視窗樣式 (Compatible with 32/64 bit)
         /// </summary>
-        [DllImport("user32.dll", SetLastError = true)]
-        internal static extern IntPtr SetWindowLong(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+        public static IntPtr GetWindowLong(IntPtr hWnd, int nIndex)
+        {
+            if (IntPtr.Size == 8)
+                return GetWindowLongPtr64(hWnd, nIndex);
+            else
+                return GetWindowLong32(hWnd, nIndex);
+        }
+
+        // 32-bit signature
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+        private static extern IntPtr SetWindowLong32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        // 64-bit signature
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        /// <summary>
+        /// 修改視窗樣式 (Compatible with 32/64 bit)
+        /// </summary>
+        internal static IntPtr SetWindowLong(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
+        {
+            if (IntPtr.Size == 8)
+                return SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
+            else
+                return SetWindowLong32(hWnd, nIndex, dwNewLong);
+        }
+
+        #endregion
 
         /// <summary>
         /// 取得視窗文字標題
@@ -198,7 +228,7 @@ namespace DesktopAnnouncement
                 // 檢查 Handle 是否有效（防止競態條件：視窗可能在取得 Handle 後被銷毀）
                 if (!IsWindow(hWnd))
                 {
-                    System.Diagnostics.Debug.WriteLine("[WARN] 前景視窗 Handle 無效（視窗可能已被銷毀）");
+                    Logger.Warn("[WARN] 前景視窗 Handle 無效（視窗可能已被銷毀）");
                     return string.Empty;
                 }
 
@@ -210,7 +240,7 @@ namespace DesktopAnnouncement
                 // 檢查是否被截斷（回傳值 = 緩衝區容量 - 1 表示可能被截斷）
                 if (result > 0 && result == className.Capacity - 1)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[WARN] 類別名稱可能被截斷，重試使用更大的緩衝區");
+                    Logger.Warn($"[WARN] 類別名稱可能被截斷，重試使用更大的緩衝區");
                     className = new StringBuilder(1024);
                     result = GetClassName(hWnd, className, className.Capacity);
                 }
@@ -219,17 +249,17 @@ namespace DesktopAnnouncement
             }
             catch (DllNotFoundException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[WARN] Win32 DLL 未找到: {ex.Message}");
+                Logger.Error($"[WARN] Win32 DLL 未找到: {ex.Message}", ex);
                 return string.Empty;
             }
             catch (EntryPointNotFoundException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[WARN] Win32 API 進入點未找到: {ex.Message}");
+                Logger.Error($"[WARN] Win32 API 進入點未找到: {ex.Message}", ex);
                 return string.Empty;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 取得前景視窗類別名稱時發生意外異常: {ex.Message}");
+                Logger.Error($"[ERROR] 取得前景視窗類別名稱時發生意外異常", ex);
                 return string.Empty;
             }
         }
@@ -250,7 +280,7 @@ namespace DesktopAnnouncement
                 // 檢查 Handle 是否有效（防止競態條件：視窗可能在取得 Handle 後被銷毀）
                 if (!IsWindow(hWnd))
                 {
-                    System.Diagnostics.Debug.WriteLine("[WARN] 前景視窗 Handle 無效（視窗可能已被銷毀）");
+                    Logger.Warn("[WARN] 前景視窗 Handle 無效（視窗可能已被銷毀）");
                     return string.Empty;
                 }
 
@@ -263,7 +293,8 @@ namespace DesktopAnnouncement
                 processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, processId);
                 if (processHandle == IntPtr.Zero)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[WARN] 無法開啟處理程序 (PID: {processId})，可能權限不足");
+                    // 權限不足是正常的，只記錄一般日誌即可
+                    // Logger.Warn($"[WARN] 無法開啟處理程序 (PID: {processId})，可能權限不足");
                     return string.Empty;
                 }
 
@@ -274,7 +305,7 @@ namespace DesktopAnnouncement
                 // 檢查是否被截斷（回傳值 >= 緩衝區容量表示可能被截斷）
                 if (pathLength > 0 && pathLength >= processPath.Capacity)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[WARN] 執行檔路徑可能被截斷，重試使用更大的緩衝區");
+                    Logger.Warn($"[WARN] 執行檔路徑可能被截斷，重試使用更大的緩衝區");
                     processPath = new StringBuilder(4096);
                     pathLength = GetModuleFileNameEx(processHandle, IntPtr.Zero, processPath, (uint)processPath.Capacity);
                 }
@@ -283,22 +314,22 @@ namespace DesktopAnnouncement
             }
             catch (DllNotFoundException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[WARN] Win32 DLL 未找到: {ex.Message}");
+                Logger.Error($"[WARN] Win32 DLL 未找到: {ex.Message}", ex);
                 return string.Empty;
             }
             catch (EntryPointNotFoundException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[WARN] Win32 API 進入點未找到: {ex.Message}");
+                Logger.Error($"[WARN] Win32 API 進入點未找到: {ex.Message}", ex);
                 return string.Empty;
             }
             catch (UnauthorizedAccessException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[WARN] 訪問被拒絕（權限不足）: {ex.Message}");
+                 // 權限不足是正常的
                 return string.Empty;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 取得前景視窗執行檔路徑時發生意外異常: {ex.Message}");
+                Logger.Error($"[ERROR] 取得前景視窗執行檔路徑時發生意外異常", ex);
                 return string.Empty;
             }
             finally
@@ -312,7 +343,7 @@ namespace DesktopAnnouncement
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[ERROR] 關閉處理程序句柄時發生異常: {ex.Message}");
+                        Logger.Error($"[ERROR] 關閉處理程序句柄時發生異常", ex);
                     }
                 }
             }
@@ -354,12 +385,12 @@ namespace DesktopAnnouncement
             }
             catch (DllNotFoundException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[WARN] Win32 DLL 未找到 (檢查桌面): {ex.Message}");
+                Logger.Error($"[WARN] Win32 DLL 未找到 (檢查桌面): {ex.Message}", ex);
                 return false;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 檢查前景視窗時發生異常: {ex.Message}");
+                Logger.Error($"[ERROR] 檢查前景視窗時發生異常", ex);
                 return false; // 發生錯誤時，預設不顯示
             }
         }
@@ -376,25 +407,22 @@ namespace DesktopAnnouncement
                 IntPtr desktopWindow = FindWindow("Progman", null);
                 if (desktopWindow != IntPtr.Zero)
                 {
-                    System.Diagnostics.Debug.WriteLine("[INFO] 找到桌面窗口 (Progman)");
                     return desktopWindow;
                 }
 
                 // 如果找不到 Progman，查找 WorkerW（Windows 7+）
-                // WorkerW 是隱藏的工作區窗口，需要通過枚舉查找
                 desktopWindow = FindWorkerWindow();
                 if (desktopWindow != IntPtr.Zero)
                 {
-                    System.Diagnostics.Debug.WriteLine("[INFO] 找到桌面窗口 (WorkerW)");
                     return desktopWindow;
                 }
 
-                System.Diagnostics.Debug.WriteLine("[WARN] 無法找到桌面窗口");
+                Logger.Warn("[WARN] 無法找到桌面窗口");
                 return IntPtr.Zero;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 查找桌面窗口時發生異常：{ex.Message}");
+                Logger.Error($"[ERROR] 查找桌面窗口時發生異常", ex);
                 return IntPtr.Zero;
             }
         }
@@ -434,7 +462,7 @@ namespace DesktopAnnouncement
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 查找 WorkerW 窗口時發生異常：{ex.Message}");
+                Logger.Error($"[ERROR] 查找 WorkerW 窗口時發生異常", ex);
                 return IntPtr.Zero;
             }
         }
@@ -450,7 +478,7 @@ namespace DesktopAnnouncement
             {
                 if (hWnd == IntPtr.Zero)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ERROR] 無效的視窗 Handle");
+                    Logger.Error("[ERROR] 無效的視窗 Handle");
                     return false;
                 }
 
@@ -458,7 +486,7 @@ namespace DesktopAnnouncement
                 IntPtr desktopWindow = FindDesktopWindow();
                 if (desktopWindow == IntPtr.Zero)
                 {
-                    System.Diagnostics.Debug.WriteLine("[WARN] 無法找到桌面窗口，跳過桌面整合");
+                    Logger.Warn("[WARN] 無法找到桌面窗口，跳過桌面整合");
                     return false;
                 }
 
@@ -466,16 +494,16 @@ namespace DesktopAnnouncement
                 IntPtr result = SetParent(hWnd, desktopWindow);
                 if (result == IntPtr.Zero)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ERROR] SetParent 失敗");
+                    Logger.Error("[ERROR] SetParent 失敗");
                     return false;
                 }
 
-                System.Diagnostics.Debug.WriteLine("[INFO] 視窗已與桌面整合");
+                Logger.Info("[INFO] 視窗已與桌面整合");
                 return true;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] 視窗與桌面整合時發生異常：{ex.Message}");
+                Logger.Error($"[ERROR] 視窗與桌面整合時發生異常", ex);
                 return false;
             }
         }
