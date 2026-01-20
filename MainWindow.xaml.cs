@@ -47,6 +47,11 @@ namespace DesktopAnnouncement
         private readonly DispatcherTimer _windowLevelCheckTimer;
 
         /// <summary>
+        /// 心跳定時器，用於定期記錄視窗狀態（診斷用）
+        /// </summary>
+        private readonly DispatcherTimer _heartbeatTimer;
+
+        /// <summary>
         /// 視窗位置變化防抖定時器（避免頻繁寫入磁盤）
         /// </summary>
         private DispatcherTimer? _savePositionDebounceTimer;
@@ -72,6 +77,9 @@ namespace DesktopAnnouncement
             // 防止記憶體洩漏（避免在視窗加載前關閉時遺漏的事件訂閱）
             this.LocationChanged += MainWindow_LocationChanged;
             this.Activated += MainWindow_Activated;
+            this.Deactivated += MainWindow_Deactivated;
+            this.Closing += MainWindow_Closing;
+            this.StateChanged += MainWindow_StateChanged;
 
             // 設定設定檔路徑（與執行檔同目錄）
             _configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.txt");
@@ -90,6 +98,11 @@ namespace DesktopAnnouncement
             _savePositionDebounceTimer = new DispatcherTimer();
             _savePositionDebounceTimer.Interval = TimeSpan.FromMilliseconds(1000);  // 位置改變後延遲1秒再保存
             _savePositionDebounceTimer.Tick += SavePositionDebounceTimer_Tick;
+
+            // 初始化心跳定時器（每 5 分鐘記錄一次狀態）
+            _heartbeatTimer = new DispatcherTimer();
+            _heartbeatTimer.Interval = TimeSpan.FromMinutes(5);
+            _heartbeatTimer.Tick += HeartbeatTimer_Tick;
 
             // 載入設定檔
             LoadConfiguration();
@@ -139,6 +152,11 @@ namespace DesktopAnnouncement
             // 啟動視窗層級監控定時器,確保視窗保持在底層
             _windowLevelCheckTimer.Start();
             Logger.Info("[INFO] 視窗層級監控定時器已啟動");
+            
+            // 啟動心跳定時器
+            _heartbeatTimer.Start();
+            Logger.Info("[INFO] 心跳定時器已啟動（每 5 分鐘記錄一次）");
+            
             // 啟動日期檢查定時器
             ScheduleNextMidnightUpdate();
         }
@@ -162,6 +180,56 @@ namespace DesktopAnnouncement
         {
             // 視窗被激活時，立即將其設置回底層
             SetWindowToBottom();
+        }
+
+        /// <summary>
+        /// 視窗失去焦點事件
+        /// </summary>
+        private void MainWindow_Deactivated(object? sender, EventArgs e)
+        {
+            Logger.Info("[LIFECYCLE] 視窗失去焦點 (Deactivated)");
+        }
+
+        /// <summary>
+        /// 視窗狀態變更事件（最小化、最大化、正常）
+        /// </summary>
+        private void MainWindow_StateChanged(object? sender, EventArgs e)
+        {
+            Logger.Info($"[LIFECYCLE] 視窗狀態變更: {this.WindowState}");
+            
+            // 如果視窗被最小化，記錄警告
+            if (this.WindowState == WindowState.Minimized)
+            {
+                Logger.Warn("[WARNING] 視窗被最小化！這可能導致視窗消失");
+            }
+        }
+
+        /// <summary>
+        /// 視窗即將關閉事件
+        /// </summary>
+        private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            // 記錄關閉請求的來源
+            var stackTrace = new System.Diagnostics.StackTrace(true);
+            Logger.Warn($"[LIFECYCLE] 視窗即將關閉！\n堆疊追蹤：\n{stackTrace}");
+            
+            // 如果不是使用者透過關閉按鈕關閉，記錄警告
+            // 注意：這裡不取消關閉，只是記錄以便診斷
+        }
+
+        /// <summary>
+        /// 心跳定時器事件（每 5 分鐘記錄一次狀態）
+        /// </summary>
+        private void HeartbeatTimer_Tick(object? sender, EventArgs e)
+        {
+            try
+            {
+                Logger.Info($"[HEARTBEAT] 視窗仍在運行 - State: {this.WindowState}, Visible: {this.IsVisible}, Opacity: {this.Opacity}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("[ERROR] 心跳記錄失敗", ex);
+            }
         }
 
         /// <summary>
@@ -842,6 +910,13 @@ namespace DesktopAnnouncement
                     _windowLevelCheckTimer.Tick -= WindowLevelCheckTimer_Tick;
                 }
 
+                // 停止並清理心跳定時器
+                if (_heartbeatTimer != null)
+                {
+                    _heartbeatTimer.Stop();
+                    _heartbeatTimer.Tick -= HeartbeatTimer_Tick;
+                }
+
                 // 停止並清理視窗位置保存防抖定時器，釋放所有引用以防止記憶體洩漏
                 if (_savePositionDebounceTimer != null)
                 {
@@ -860,6 +935,11 @@ namespace DesktopAnnouncement
                 this.Loaded -= MainWindow_Loaded;
                 this.LocationChanged -= MainWindow_LocationChanged;
                 this.Activated -= MainWindow_Activated;
+                this.Deactivated -= MainWindow_Deactivated;
+                this.Closing -= MainWindow_Closing;
+                this.StateChanged -= MainWindow_StateChanged;
+
+                Logger.Info("[LIFECYCLE] 視窗已關閉 (OnClosed)");
             }
             catch (Exception ex)
             {
